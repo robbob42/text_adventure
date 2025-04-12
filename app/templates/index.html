@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLM Dungeon Master</title>
+    <style>
+        html, body {
+            height: 100%; /* Ensure html and body take full height */
+            margin: 0;
+            font-family: sans-serif;
+            background-color: #f4f4f4;
+            display: flex; /* Use flexbox for overall layout */
+            flex-direction: row; /* Arrange children side-by-side */
+        }
+        #status-panel {
+            width: 250px; /* Fixed width for the sidebar */
+            padding: 15px;
+            border-right: 1px solid #ccc;
+            background-color: #e9ecef;
+            overflow-y: auto; /* Allow scrolling if content overflows */
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0; /* Prevent panel from shrinking */
+            font-size: 0.9em;
+        }
+        #status-panel h2 {
+            margin-top: 0;
+            margin-bottom: 10px;
+            border-bottom: 1px solid #ccc;
+            padding-bottom: 5px;
+            font-size: 1.1em;
+        }
+        #char-stats, #inventory-display, #quests-display {
+            margin-bottom: 20px;
+            line-height: 1.5;
+        }
+        #inventory-list, #quest-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        #inventory-list li, #quest-list li {
+            padding: 1px 0; /* Reduced padding slightly */
+        }
+
+        #main-content {
+            flex-grow: 1; /* Takes up remaining space */
+            display: flex;
+            flex-direction: column; /* Stack chat log and input area */
+            height: 100vh; /* Full viewport height */
+        }
+        #chat-log {
+            flex-grow: 1; /* Takes up available vertical space */
+            overflow-y: auto; /* Enables scrolling */
+            padding: 15px;
+            background-color: #fff;
+            display: flex;
+            flex-direction: column;
+        }
+        .message {
+            margin-bottom: 10px;
+            padding: 8px 12px;
+            border-radius: 7px; /* Slightly more rounded */
+            max-width: 85%; /* Player max width */
+            line-height: 1.45; /* Slightly more line spacing */
+            word-wrap: break-word;
+            box-shadow: 0 1px 1px rgba(0,0,0,0.1); /* Subtle shadow */
+        }
+        .player-message {
+            background-color: #DCF8C6; /* WhatsApp-like green */
+            align-self: flex-end;
+            margin-left: auto;
+        }
+        /* --- Updated Game/Error Message Styling --- */
+        .game-message, .error-message {
+            background-color: #f0f0f0; /* Lighter grey */
+            align-self: flex-start; /* Keep aligned left */
+            /* Removed margin-right: auto; */
+            max-width: calc(95% - 24px); /* Near full width, accounting for padding */
+            /* Use width: fit-content; for messages shorter than max-width */
+            /* Or remove width/min-width if full-width appearance is always desired */
+            /* width: fit-content; */
+            /* min-width: 50px; */
+        }
+        .error-message {
+            background-color: #FADBD8; /* Lighter red */
+            color: #7B241C;
+            border-left: 3px solid #E74C3C; /* Add error indicator */
+            padding-left: 9px;
+        }
+        /* --- End Update --- */
+        #input-area {
+            display: flex;
+            padding: 10px;
+            border-top: 1px solid #ccc;
+            background-color: #f4f4f4;
+            flex-shrink: 0; /* Prevent input area from shrinking */
+        }
+        #user-input {
+            flex-grow: 1;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 15px; /* Rounded input */
+            margin-right: 8px;
+        }
+        #send-button {
+            padding: 10px 15px;
+            border: none;
+            background-color: #007bff;
+            color: white;
+            border-radius: 15px; /* Rounded button */
+            cursor: pointer;
+        }
+        #send-button:hover {
+            background-color: #0056b3;
+        }
+    </style>
+    </head>
+<body>
+    <div id="status-panel">
+        <h2>Status</h2>
+        <div id="char-stats">
+            <div>HP: <span id="hp-value">--</span> / <span id="max-hp-value">--</span></div>
+            <div>Level: <span id="level-value">--</span></div>
+            <div>XP: <span id="xp-value">--</span> / <span id="xp-needed-value">--</span></div>
+        </div>
+
+        <h2>Inventory</h2>
+        <div id="inventory-display">
+            <ul id="inventory-list">
+                </ul>
+        </div>
+
+        <h2>Active Quests</h2>
+        <div id="quests-display">
+            <ul id="quest-list">
+                </ul>
+        </div>
+    </div>
+
+    <div id="main-content">
+        <div id="chat-log">
+            <div class="message game-message">Welcome to the LLM Dungeon Master! Type your commands below. Start with 'look'.</div>
+        </div>
+
+        <div id="input-area">
+            <input type="text" id="user-input" placeholder="Enter command..." autofocus>
+            <button id="send-button">Send</button>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
