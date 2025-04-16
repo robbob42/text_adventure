@@ -1,5 +1,7 @@
 # game_logic/actions/observation.py
+# Handles looking, inventory, status, quests.
 # Updated handle_look to add a <br> after the location header.
+# Updated handle_look for Phase 3, Step 2: Add dynamic description based on tutorial state in entry_cave.
 
 from typing import Optional, Tuple, Dict, Any, TYPE_CHECKING
 
@@ -18,18 +20,49 @@ except ImportError:
 
 def handle_look(manager: 'GameManager', argument: Optional[str]) -> Tuple[str, Optional[Dict[str, Any]]]:
     """
-    Handles the 'look' command. Returns the location header (with <br>) and full description.
-    Argument is ignored.
+    Handles the 'look' command. Returns the location header and full description.
+    Includes dynamic description logic for 'entry_cave' tutorial state.
+    Argument is ignored for looking at the current location.
     """
-    llm_prompt_data = None # No LLM data needed
+    # TODO: Implement 'look [item/npc]' functionality if argument is provided.
+    # For now, assume argument means look at the current location.
+
+    llm_prompt_data = None # No LLM data needed for basic look
+
     if manager.current_location:
         location_name = manager.current_location.name
-        description = manager.current_location.get_full_description() # This contains <br><br> internally now
-        # Format the output string with header, HTML break, then description
-        direct_message = f"<b>Current Location: {location_name}</b><br>\n\n{description}" # Added <br>
+        # Get the base description, which includes item/NPC/exit lists formatted with <br>
+        description = manager.current_location.get_full_description()
+
+        # --- Tutorial Dynamic Description (Phase 3, Step 2) ---
+        if manager.character.current_location_id == 'entry_cave':
+            # Define the specific sentence we might replace or add hints about
+            blockage_sentence = "A narrow passage leading east is blocked by a pile of <b>rubble</b>."
+
+            if manager.tutorial_blockage_cleared:
+                # If cleared, replace the blockage sentence in the description string
+                # Ensure the replacement target string exactly matches the one in content.py
+                description = description.replace(
+                    blockage_sentence,
+                    "The narrow passage leading east is now clear of <b>rubble</b>."
+                )
+                print("Dynamic Look: Rubble cleared.") # Log
+            elif manager.tutorial_pickaxe_taken:
+                 # If not cleared, but pickaxe is taken, append a hint (with HTML break)
+                 description += "<br><i>Maybe the <b>pickaxe</b> could clear the <b>rubble</b>?</i>" # Hint in italics
+                 print("Dynamic Look: Hint added (has pickaxe).") # Log
+            # Else (not cleared, no pickaxe): Use original description from get_full_description()
+            else:
+                 print("Dynamic Look: Using standard description (no pickaxe/not cleared).") # Log
+        # --- End Tutorial Dynamic Description ---
+
+        # Format the final output string with header, HTML break, then potentially modified description
+        direct_message = f"<b>Current Location: {location_name}</b><br>\n\n{description}"
     else:
         direct_message = "You are lost in the void. No location data available."
+
     return (direct_message, llm_prompt_data)
+
 
 def handle_inventory(manager: 'GameManager', argument: Optional[str]) -> Tuple[str, Optional[Dict[str, Any]]]:
     """
@@ -59,7 +92,8 @@ def handle_status(manager: 'GameManager', argument: Optional[str]) -> Tuple[str,
         f"Skills: {manager.character.skills if manager.character.skills else 'None'}",
         f"Location: {manager.current_location.name if manager.current_location else 'Unknown'}"
     ]
-    direct_message = "\n".join(status_lines) # Keep \n here as it's for console-like status block
+    # Use <br> for HTML display in chat log instead of \n
+    direct_message = "<br>".join(status_lines)
     return (direct_message, llm_prompt_data)
 
 def handle_quests(manager: 'GameManager', argument: Optional[str]) -> Tuple[str, Optional[Dict[str, Any]]]:
@@ -71,13 +105,15 @@ def handle_quests(manager: 'GameManager', argument: Optional[str]) -> Tuple[str,
     if not manager.character.active_quests:
         direct_message = "You have no active quests."
     else:
-        quest_lines = ["Active Quests:"]
+        quest_lines = ["<b>Active Quests:</b>"] # Add bold header
         for quest_id in manager.character.active_quests:
             quest_data = QUESTS.get(quest_id) # Use imported QUESTS
             if quest_data:
-                quest_lines.append(f"- {quest_data.get('name', 'Unknown Quest')}: {quest_data.get('description', 'No description.')}")
+                # Add quest name and description
+                quest_lines.append(f"- <b>{quest_data.get('name', 'Unknown Quest')}</b>: {quest_data.get('description', 'No description.')}")
             else:
                 quest_lines.append(f"- Unknown Quest (ID: {quest_id})")
-        direct_message = "\n".join(quest_lines) # Keep \n here for list formatting
+        # Use <br> for HTML display in chat log
+        direct_message = "<br>".join(quest_lines)
     return (direct_message, llm_prompt_data)
 

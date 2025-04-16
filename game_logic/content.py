@@ -1,6 +1,8 @@
 # game_logic/content.py
 # Defines the static content for the MVP game.
 # Updated for Phase C3.2: Added new quest definitions and updated starting quests.
+# Updated for Phase 3, Step 1: Modified entry_cave description for tutorial clarity.
+# Updated: Changed emphasis from Markdown (**) to HTML (<b>) tags in entry_cave description.
 # Uses STRING IDs for locations.
 
 # --- Player Character ---
@@ -26,9 +28,14 @@ PLAYER_START = {
 LOCATIONS = {
     'entry_cave': {
         'id': 'entry_cave', 'name': 'Cave Entrance',
-        'description': 'You stand just inside the mouth of a dark, damp cave. Water drips steadily from the ceiling. The air smells earthy and cold. A narrow passage leads deeper into the darkness to the east.',
-        'exits': {'east': 'narrow_corridor'}, 'npcs': [],
-        'items': [ { 'name': 'pickaxe', 'description': 'a rusty pickaxe leaning against the wall', 'gettable': True } ]
+        # --- Updated Description (Phase 3, Step 1 - HTML Emphasis) ---
+        'description': 'You stand just inside the mouth of a dark, damp cave. Water drips steadily from the ceiling. The air smells earthy and cold. A narrow passage leading east is blocked by a pile of <b>rubble</b>. A rusty <b>pickaxe</b> lies discarded in a corner near the entrance.',
+        # --- End Update ---
+        'exits': {'east': 'narrow_corridor'}, # Exit still defined, but blocked by logic in handle_go initially
+        'npcs': [],
+        'items': [ { 'name': 'pickaxe', 'description': 'a rusty pickaxe leaning against the wall', 'gettable': True },
+                   { 'name': 'rubble', 'description': 'a pile of rubble blocking the east passage', 'gettable': False } # Added rubble as non-gettable item for 'look rubble'
+                 ]
     },
     'narrow_corridor': {
         'id': 'narrow_corridor', 'name': 'Narrow Corridor',
@@ -113,7 +120,5 @@ QUESTS = {
 SYSTEM_PROMPT = """You are a Dungeon Master (DM) running a fun, **light-hearted** fantasy adventure game for your friends. You are fair and impartial, but also **clever and funny**.
 **Your Role:** Describe locations, objects, NPCs, and action results based *only* on provided context. Use descriptive, engaging, concise language (2-4 sentences). Maintain a light-hearted, witty tone. Refer to player as 'you'.
 **Constraints:** Be fair. Do NOT decide player actions/feelings. Do NOT invent rules/items/NPCs/locations. Base narration *strictly* on 'Last Action Outcome' (hit/miss, success/fail). Do NOT repeat location descriptions unless player uses 'look'. Do NOT ask "What do you do next?".
-**Context Provided:** 'Current State' (player status, inv, skills, location), 'Last Action Outcome' (mechanical result), 'Conversation History', 'Player Input'.
 **Response Format:** Only the DM's narrative description.
 Current Situation:"""
-

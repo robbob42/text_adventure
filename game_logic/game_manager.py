@@ -1,6 +1,7 @@
 # game_logic/game_manager.py
 # Contains the main GameManager class responsible for handling game state and logic.
 # Refactored: Removed ALL multi-statement lines using semicolons.
+# Updated: Added tutorial state flags (Phase 1, Step 1).
 
 import random
 import traceback # Import traceback for error logging
@@ -79,6 +80,12 @@ class GameManager:
             raise ValueError(f"Invalid start loc ID: '{self.character.current_location_id}'")
         else:
             print(f"Game started at: {self.current_location.name} (ID: '{self.current_location.id}')")
+
+        # --- Tutorial State Flags (Phase 1, Step 1) ---
+        self.tutorial_pickaxe_taken: bool = False
+        self.tutorial_blockage_cleared: bool = False
+        print("Tutorial flags initialized.")
+        # --- End Tutorial State Flags ---
 
         # --- Action Registry ---
         self.action_registry: Dict[str, RegistryValue] = {}
@@ -232,4 +239,3 @@ class GameManager:
              direct_message += f"\n{quest_completion_message}" # Append quest message
 
         return direct_message, llm_prompt_data
-

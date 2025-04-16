@@ -1,5 +1,6 @@
 # game_logic/actions/movement.py
-# Updated handle_go to add a <br> after the location header on success.
+# Contains action handlers related to player movement.
+# Updated: Added tutorial gate logic for entry_cave exit (Phase 2, Step 1).
 
 from typing import Optional, Tuple, Dict, Any, TYPE_CHECKING
 
@@ -9,50 +10,81 @@ if TYPE_CHECKING:
 
 def handle_go(manager: 'GameManager', direction: Optional[str]) -> Tuple[str, Optional[Dict[str, Any]]]:
     """
-    Handles the 'go' command. Attempts to move the character in the specified direction.
+    Handles the 'go [direction]' command. Moves the character if the exit is valid.
+    Includes tutorial gate logic for 'entry_cave'.
 
     Args:
-        manager: The GameManager instance containing the game state.
-        direction: The direction the player wants to move (e.g., 'north').
+        manager: The GameManager instance.
+        direction: The direction the player wants to move (e.g., 'north', 'east').
 
     Returns:
-        A tuple: (direct_message, llm_prompt_data).
-                 On success, direct_message includes header, <br>, and new location description.
-                 On failure, direct_message is an error message.
-                 llm_prompt_data is None for this action.
+        Tuple (direct_message, llm_prompt_data). llm_prompt_data is None.
     """
-    llm_prompt_data = None # 'go' action doesn't need specific LLM outcome data
+    llm_prompt_data = None # No LLM needed for movement confirmation
 
+    # --- Tutorial Gate: Entry Cave Exit (Phase 2, Step 1) ---
+    if manager.character.current_location_id == 'entry_cave':
+        # Check if the player is trying to leave via a valid exit direction for this cave
+        target_exit_id = manager.current_location.get_exit(direction) if manager.current_location and direction else None
+
+        if target_exit_id: # Only intervene if they specified a valid direction out
+            if not manager.tutorial_blockage_cleared:
+                # Blockage is NOT cleared, prevent movement and give hint
+                if not manager.tutorial_pickaxe_taken:
+                    # Hint: Need a tool
+                    print("Tutorial Gate: Blocked (No Pickaxe)") # Log
+                    return ("The exit is blocked by a pile of rubble. You might need a tool to clear it.", None)
+                else:
+                    # Hint: Have the tool, need to use it
+                    print("Tutorial Gate: Blocked (Has Pickaxe, Not Used)") # Log
+                    return ("You have the pickaxe. Perhaps you could use it to clear the rubble blocking the exit?", None)
+            else:
+                # Blockage IS cleared, allow movement to proceed normally by falling through
+                print("Tutorial Gate: Passed (Blockage Cleared)") # Log
+        # else: Direction was None or invalid for this room, let normal logic handle below.
+
+    # --- End Tutorial Gate ---
+
+
+    # --- Original Movement Logic ---
     if not direction:
-        return ("Go where? Please specify a direction (e.g., 'go north').", llm_prompt_data)
-
+        return ("Go where? Please specify a direction (e.g., north, east, up).", llm_prompt_data)
     if not manager.current_location:
         return ("Cannot move: Current location is unknown.", llm_prompt_data)
 
-    # Find the exit using the method on the Location object
-    target_location_id = manager.current_location.get_exit(direction)
+    # Get the target location ID using the helper method
+    next_location_id = manager.current_location.get_exit(direction)
 
-    if target_location_id is None:
-        return ("You can't go that way.", llm_prompt_data)
+    if next_location_id is None:
+        return (f"You can't go {direction} from here.", llm_prompt_data)
 
-    # Find the new location object from the manager's dictionary
-    new_location = manager.locations.get(target_location_id)
-    if new_location is None:
-        print(f"ERROR: Location data inconsistency in handle_go. ID '{target_location_id}' not found in manager.locations.")
-        return ("Error: That path seems to lead nowhere (invalid location ID defined in content).", llm_prompt_data)
+    # Check if the target location exists in the game manager's dictionary
+    next_location = manager.locations.get(next_location_id)
+    if next_location is None:
+        # This indicates an issue in the content.py data (exit points to non-existent location)
+        print(f"ERROR: Location '{manager.current_location.id}' exit '{direction}' points to invalid ID '{next_location_id}'.")
+        return ("[Error] That path seems to lead nowhere (Invalid location ID).", llm_prompt_data)
 
-    # --- Success Case: Update state and return formatted description ---
-    manager.character.current_location_id = target_location_id
-    manager.current_location = new_location
-    print(f"Character moved to {manager.current_location.name}") # Server log
+    # --- Update Character and Game State ---
+    manager.character.current_location_id = next_location_id
+    manager.current_location = next_location # Update manager's current location object
+    print(f"Player moved to: {next_location.name} (ID: {next_location.id})")
 
-    # Format the output string including header, HTML break, then description
-    location_name = manager.current_location.name
-    description = manager.current_location.get_full_description() # Contains internal <br><br>
-    # Added <br> after the bold tag
-    direct_message = f"<b>Current Location: {location_name}</b><br>\n\n{description}"
+    # Return the description of the new location using handle_look's logic
+    # This avoids duplicating the description generation code.
+    # We call handle_look internally to get the formatted description.
+    look_message, _ = handle_look(manager, None) # Argument is ignored by handle_look
+    return (look_message, llm_prompt_data)
 
-    return (direct_message, llm_prompt_data)
 
-# --- Add other movement-related handlers here later if needed ---
+# --- Import handle_look at the end to avoid circular dependency issues ---
+# If handle_look were needed by other functions in this file, imports might need restructuring.
+try:
+    from .observation import handle_look
+except ImportError:
+    print("ERROR: Failed to import handle_look from observation.py in movement.py")
+    # Define a dummy if import fails, so the 'go' command doesn't crash
+    def handle_look(manager, argument):
+        return ("You arrive at the new location.", None)
 
+# --- Add other movement-related handlers here later (e.g., enter, climb) ---
