@@ -7,6 +7,7 @@
 # Fixed: Corrected alias handling in process_turn to pass full direction name to handle_go.
 # Updated: Modified process_turn return value to include discovery flag (Phase 5, Step 5.1).
 # Updated: Modified process_turn return value AGAIN to include discovered verb (Phase 5.1 Revised).
+# Updated: Added discovered_llm_actions state variable (Phase 8, Step 8.1).
 
 import random
 import traceback # Import traceback for error logging
@@ -97,6 +98,11 @@ class GameManager:
         self.total_actions: int = 0 # Will store total count of unique actions
         print("Actions Discovered state initialized.")
         # --- End Actions Discovered State ---
+
+        # --- LLM Actions Discovered State (Phase 8, Step 8.1) ---
+        self.discovered_llm_actions: Set[str] = set() # Stores LLM Only verbs used successfully
+        print("LLM Actions Discovered state initialized.")
+        # --- End LLM Actions Discovered State ---
 
         # --- Action Registry ---
         self.action_registry: Dict[str, RegistryValue] = {}
@@ -231,6 +237,7 @@ class GameManager:
         canonical_verb = None # To store the canonical verb for discovery tracking
         action_was_newly_discovered = False # Flag for discovery
         discovered_verb_this_turn = None # Store the verb discovered in this turn
+        llm_action_verb = None # Store the original verb if it's an LLM_ONLY action
 
         parsed_command = self.parse_command(player_input)
 
@@ -238,6 +245,8 @@ class GameManager:
             direct_message = "Please enter a command."
         else:
             verb, argument_string = parsed_command
+            llm_action_verb = verb # Store original verb in case it's LLM_ONLY
+
             # --- Map aliases to canonical verbs ---
             CANONICAL_VERBS = {
                 "go", "look", "inventory", "status", "quests",
@@ -289,6 +298,14 @@ class GameManager:
                 print(f"Dispatching '{verb}' to LLM-only handler.")
                 if HANDLERS_LOADED:
                     direct_message, llm_prompt_data = handle_llm_only_action(self, verb, argument_string)
+                    # --- LLM Action Discovery Check (Phase 8, Step 8.2) ---
+                    # Check if the LLM action verb is new
+                    # Ensure llm_action_verb is not None and the action didn't immediately error
+                    if llm_action_verb and not direct_message.startswith("[Error"):
+                         if llm_action_verb not in self.discovered_llm_actions:
+                              self.discovered_llm_actions.add(llm_action_verb)
+                              print(f"LLM Action Discovered: '{llm_action_verb}' added. Total: {len(self.discovered_llm_actions)}")
+                    # --- End LLM Discovery Check ---
                 else:
                     direct_message = "[Game Error: LLM-only handler not loaded]"
                     llm_prompt_data = None

@@ -5,6 +5,8 @@
 # Updated: Use <br> instead of \n when combining direct message and LLM narration.
 # Updated: Add discovered actions data to /state endpoint (Phase 7, Step 7.1).
 # Updated: Add discovered actions data to /chat endpoint response (Phase 7, Step 7.3).
+# Updated: Add discovered LLM actions data to /state endpoint (Phase 11, Step 11.1).
+# Updated: Add discovered LLM actions data to /chat endpoint response (Phase 11, Step 11.3).
 
 import sys
 import os
@@ -63,6 +65,7 @@ try:
                 if loaded_character:
                     game_manager.character = loaded_character
                     # TODO: Restore discovered actions from save file? (Not implemented yet)
+                    # TODO: Restore discovered LLM actions from save file? (Not implemented yet)
                     # TODO: Restore tutorial flags from save file? (Not implemented yet)
                     game_manager.current_location = game_manager.locations.get(loaded_character.current_location_id)
                     if game_manager.current_location is None:
@@ -113,7 +116,9 @@ def get_initial_state():
             'location_name': game_manager.current_location.name,
             # --- Added Actions Discovered Data (Phase 7, Step 7.1) ---
             'discovered_actions': sorted(list(game_manager.discovered_actions)),
-            'total_actions': game_manager.total_actions
+            'total_actions': game_manager.total_actions,
+            # --- Added LLM Actions Discovered Data (Phase 11, Step 11.1) ---
+            'discovered_llm_actions': sorted(list(game_manager.discovered_llm_actions))
             # --- End Added Data ---
         }
         return jsonify(response_data)
@@ -126,9 +131,10 @@ def get_initial_state():
             "inventory": [],
             "active_quests": [],
             "location_name": "Unknown",
-            # --- Added Default Actions Data (Phase 7, Step 7.1) ---
+            # --- Added Default Actions Data (Phase 7 & 11) ---
             "discovered_actions": [],
-            "total_actions": 0
+            "total_actions": 0,
+            "discovered_llm_actions": []
             # --- End Added Data ---
         }), 500
 
@@ -142,12 +148,13 @@ def chat():
     data = request.get_json(); player_input = data.get('input', None)
     if not player_input: return jsonify({"error": "Missing 'input'"}), 400
     print(f"Player input: '{player_input}'")
-    # Add default actions keys to initial error response
+    # Add default actions keys to initial error response (Phase 11.3)
     if game_manager is None:
         return jsonify({
             "reply": "[Game Error: Not ready]",
             "character_status": {}, "inventory": [], "active_quests": [],
-            "discovered_actions": [], "total_actions": 0 # Default actions
+            "discovered_actions": [], "total_actions": 0,
+            "discovered_llm_actions": [] # Default LLM actions
             }), 500
 
     # --- Process turn ---
@@ -176,14 +183,15 @@ def chat():
     except Exception as e:
         print(f"Error during process_turn: {e}"); traceback.print_exc();
         active_quest_names_err = [QUESTS.get(qid)['name'] for qid in game_manager.character.active_quests if qid in QUESTS] if game_manager.character else []
-        # Add default actions keys to error response (Phase 7.3)
+        # Add default actions keys to error response (Phase 7.3 & 11.3)
         return jsonify({
             "reply": "[Game Error: Internal error processing turn.]",
             "character_status": { 'hp': game_manager.character.hp, 'max_hp': game_manager.character.max_hp, 'level': game_manager.character.level, 'xp': game_manager.character.xp, 'xp_needed': game_manager.character.level * 100 } if game_manager.character else {},
             "inventory": game_manager.character.inventory if game_manager.character else [],
             "active_quests": active_quest_names_err,
             "discovered_actions": sorted(list(game_manager.discovered_actions)) if game_manager else [], # Current state if possible
-            "total_actions": game_manager.total_actions if game_manager else 0
+            "total_actions": game_manager.total_actions if game_manager else 0,
+            "discovered_llm_actions": sorted(list(game_manager.discovered_llm_actions)) if game_manager else [] # Current state if possible
             }), 500
 
     # --- LLM Interaction ---
@@ -245,6 +253,7 @@ def chat():
         if db_conn_save:
             try:
                 # TODO: Persist discovered_actions and tutorial flags?
+                # TODO: Persist discovered_llm_actions?
                 save_success = save_character_state(db_conn_save, game_manager.character, character_id=1)
             except Exception as e: print(f"Error during save: {e}")
             finally: db_conn_save.close(); print(f"Save connection closed. Success: {save_success}")
@@ -253,7 +262,7 @@ def chat():
 
     # --- Return JSON response ---
     active_quest_names_resp = [QUESTS.get(qid)['name'] for qid in game_manager.character.active_quests if qid in QUESTS] if game_manager.character else []
-    # Add discovered actions data to the final response (Phase 7.3)
+    # Add discovered actions data to the final response (Phase 7.3 & 11.3)
     response_data = {
         'reply': final_reply,
         'character_status': {
@@ -267,7 +276,9 @@ def chat():
         'active_quests': active_quest_names_resp,
         # --- Added Actions Discovered Data ---
         'discovered_actions': sorted(list(game_manager.discovered_actions)),
-        'total_actions': game_manager.total_actions
+        'total_actions': game_manager.total_actions,
+        # --- Added LLM Actions Discovered Data (Phase 11.3) ---
+        'discovered_llm_actions': sorted(list(game_manager.discovered_llm_actions))
         # --- End Added Data ---
     }
     return jsonify(response_data)

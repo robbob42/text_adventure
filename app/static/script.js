@@ -5,6 +5,10 @@
 // Updated Phase 6, Step 6.3: Added updateActionsDisplay function.
 // Updated Phase 7, Step 7.2: Call updateActionsDisplay in fetchInitialState.
 // Updated Phase 7, Step 7.4: Call updateActionsDisplay in sendMessage.
+// Updated Phase 10, Step 10.3: Added DOM element reference for LLM Actions Grid.
+// Updated Phase 10, Step 10.4: Added updateLlmActionsDisplay function.
+// Updated Phase 11, Step 11.2: Call updateLlmActionsDisplay in fetchInitialState.
+// Updated Phase 11, Step 11.4: Call updateLlmActionsDisplay in sendMessage.
 
 // --- Get DOM Elements ---
 const chatLog = document.getElementById('chat-log');
@@ -25,6 +29,8 @@ const actionsCounterElement = document.getElementById('actions-counter'); // The
 const actionsListElement = document.getElementById('actions-list');     // The <ul> element
 const discoveredCountSpan = actionsCounterElement ? actionsCounterElement.querySelector('span:first-child') : null; // First span in counter div
 const totalCountSpan = actionsCounterElement ? actionsCounterElement.querySelector('span:last-child') : null;      // Second span in counter div
+// LLM Actions Discovered Panel Elements (Phase 10, Step 10.3)
+const llmActionsGridElement = document.getElementById('llm-actions-grid'); // The div holding the badges
 
 
 // --- Helper Function to Add Messages to Chat Log (Updated for innerHTML) ---
@@ -121,10 +127,9 @@ function updateActionsDisplay(discoveredList, totalCount) {
     console.log("Updating actions discovered:", discoveredList, totalCount);
 
     // Update counter spans
-    // Use 0 as default if list is null/undefined
     const discoveredCount = Array.isArray(discoveredList) ? discoveredList.length : 0;
     discoveredCountSpan.textContent = discoveredCount;
-    totalCountSpan.textContent = (typeof totalCount === 'number') ? totalCount : '--'; // Handle potential non-number total
+    totalCountSpan.textContent = (typeof totalCount === 'number') ? totalCount : '--';
 
     // Update the list of actions
     actionsListElement.innerHTML = ''; // Clear existing list items
@@ -134,17 +139,47 @@ function updateActionsDisplay(discoveredList, totalCount) {
         emptyLi.textContent = '(None yet)';
         actionsListElement.appendChild(emptyLi);
     } else {
-        // Sort the list alphabetically (create a copy first)
         const sortedList = [...discoveredList].sort();
-
-        // Create and append list items for each discovered action
         sortedList.forEach(actionVerb => {
             const li = document.createElement('li');
-            li.textContent = actionVerb; // Use textContent for safety
+            li.textContent = actionVerb;
             actionsListElement.appendChild(li);
         });
     }
 }
+
+// --- Function to Update LLM Actions Discovered Display (Phase 10, Step 10.4) ---
+function updateLlmActionsDisplay(discoveredLlmList) {
+    // Check if the target element exists
+    if (!llmActionsGridElement) {
+        console.error("LLM actions grid element missing.");
+        return;
+    }
+    console.log("Updating LLM actions discovered:", discoveredLlmList);
+
+    // Clear the current grid content
+    llmActionsGridElement.innerHTML = '';
+
+    // Check if the list is valid and has items
+    if (!Array.isArray(discoveredLlmList) || discoveredLlmList.length === 0) {
+        // If empty, display the placeholder
+        const placeholder = document.createElement('span');
+        placeholder.classList.add('llm-action-placeholder');
+        placeholder.textContent = "(Try saying 'dance' or 'sing'!)";
+        llmActionsGridElement.appendChild(placeholder);
+    } else {
+        // If not empty, sort and create badges
+        const sortedList = [...discoveredLlmList].sort();
+
+        sortedList.forEach(actionVerb => {
+            const badgeElement = document.createElement('span'); // Use span for inline-block badges
+            badgeElement.classList.add('llm-action-badge'); // Add the CSS class for styling
+            badgeElement.textContent = actionVerb; // Set the text to the action verb
+            llmActionsGridElement.appendChild(badgeElement); // Add the badge to the grid
+        });
+    }
+}
+
 
 // --- Function to Send Message to Backend ---
 async function sendMessage() {
@@ -158,9 +193,9 @@ async function sendMessage() {
         let statusData = null;
         let inventoryData = null;
         let questData = null;
-        // Add variables for actions data (Phase 7.4)
         let discoveredActionsData = null;
         let totalActionsData = null;
+        let discoveredLlmActionsData = null; // Initialize (Phase 11.4)
 
         if (!response.ok) {
             replyText = `Error: Server status ${response.status}.`;
@@ -174,6 +209,7 @@ async function sendMessage() {
                 questData = errorData.active_quests;
                 discoveredActionsData = errorData.discovered_actions;
                 totalActionsData = errorData.total_actions;
+                discoveredLlmActionsData = errorData.discovered_llm_actions; // Extract (Phase 11.4)
             } catch(e) {
                 const textError = await response.text();
                 console.error('Server error:', response.status, textError);
@@ -191,6 +227,8 @@ async function sendMessage() {
                     // Extract actions data (Phase 7.4)
                     discoveredActionsData = data.discovered_actions;
                     totalActionsData = data.total_actions;
+                    // Extract LLM actions data (Phase 11.4)
+                    discoveredLlmActionsData = data.discovered_llm_actions;
                 }
                 else {
                     replyText = 'Error: Invalid response structure.';
@@ -212,8 +250,13 @@ async function sendMessage() {
             updateActionsDisplay(discoveredActionsData, totalActionsData);
         } else {
              console.warn("Actions discovered data missing or incomplete in /chat response.");
-             // Optionally update with defaults if desired, but usually rely on backend sending it
-             // updateActionsDisplay([], 0);
+        }
+        // Call updateLlmActionsDisplay with data from /chat response (Phase 11.4)
+        if (discoveredLlmActionsData !== undefined) {
+            updateLlmActionsDisplay(discoveredLlmActionsData);
+        } else {
+             console.warn("LLM actions discovered data missing or incomplete in /chat response.");
+             // updateLlmActionsDisplay([]); // Optionally reset if missing
         }
 
     } catch (error) {
@@ -233,8 +276,9 @@ async function fetchInitialState() {
             updateStatusDisplay({ hp: '--', max_hp: '--', level: '--', xp: '--', xp_needed: '--' });
             updateInventoryDisplay([]);
             updateQuestDisplay([]);
-            // Update Actions Display with defaults on error (Phase 7.2)
             updateActionsDisplay([], 0);
+            // Update LLM Actions Display with defaults on error (Phase 11.2)
+            updateLlmActionsDisplay([]);
             return;
         }
         const data = await response.json();
@@ -245,14 +289,20 @@ async function fetchInitialState() {
         if (data.active_quests !== null && data.active_quests !== undefined) updateQuestDisplay(data.active_quests);
 
         // Update Actions Discovered display (Phase 7.2)
-        // Check if the expected keys exist in the response data
         if (data.discovered_actions !== undefined && data.total_actions !== undefined) {
             updateActionsDisplay(data.discovered_actions, data.total_actions);
         } else {
-            // Log a warning if data is missing and use defaults
             console.warn("Actions discovered data missing or incomplete in initial state response.");
             updateActionsDisplay([], 0); // Update with default empty state
         }
+        // Update LLM Actions Discovered display (Phase 11.2)
+        if (data.discovered_llm_actions !== undefined) {
+            updateLlmActionsDisplay(data.discovered_llm_actions);
+        } else {
+            console.warn("LLM actions discovered data missing in initial state response.");
+            updateLlmActionsDisplay([]); // Default if missing
+        }
+
 
     } catch (error) {
         console.error('Network error fetching initial state:', error);
@@ -261,8 +311,9 @@ async function fetchInitialState() {
         updateStatusDisplay({ hp: '--', max_hp: '--', level: '--', xp: '--', xp_needed: '--' });
         updateInventoryDisplay([]);
         updateQuestDisplay([]);
-        // Update Actions Display with defaults on error (Phase 7.2)
         updateActionsDisplay([], 0);
+        // Update LLM Actions Display with defaults on error (Phase 11.2)
+        updateLlmActionsDisplay([]);
     }
 }
 // --- Event Listeners ---
