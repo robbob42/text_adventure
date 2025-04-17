@@ -31,17 +31,21 @@
             padding-bottom: 5px;
             font-size: 1.1em;
         }
-        #char-stats, #inventory-display, #quests-display {
+        #char-stats, #inventory-display, #quests-display, #actions-display { /* Added #actions-display */
             margin-bottom: 20px;
             line-height: 1.5;
         }
-        #inventory-list, #quest-list {
+        #inventory-list, #quest-list, #actions-list { /* Added #actions-list */
             list-style: none;
             padding: 0;
             margin: 0;
         }
-        #inventory-list li, #quest-list li {
+        #inventory-list li, #quest-list li, #actions-list li { /* Added #actions-list li */
             padding: 1px 0; /* Reduced padding slightly */
+        }
+        #actions-counter { /* Style for the counter */
+             margin-bottom: 5px;
+             font-weight: bold;
         }
 
         #main-content {
@@ -76,12 +80,7 @@
         .game-message, .error-message {
             background-color: #f0f0f0; /* Lighter grey */
             align-self: flex-start; /* Keep aligned left */
-            /* Removed margin-right: auto; */
             max-width: calc(95% - 24px); /* Near full width, accounting for padding */
-            /* Use width: fit-content; for messages shorter than max-width */
-            /* Or remove width/min-width if full-width appearance is always desired */
-            /* width: fit-content; */
-            /* min-width: 50px; */
         }
         .error-message {
             background-color: #FADBD8; /* Lighter red */
@@ -129,15 +128,22 @@
         <h2>Inventory</h2>
         <div id="inventory-display">
             <ul id="inventory-list">
-                </ul>
+                <li>(Empty)</li> </ul>
         </div>
 
         <h2>Active Quests</h2>
         <div id="quests-display">
             <ul id="quest-list">
-                </ul>
+                <li>(None)</li> </ul>
         </div>
-    </div>
+
+        <h2>Actions Discovered</h2>
+        <div id="actions-display">
+            <div id="actions-counter">Count: <span>--</span> / <span>--</span></div>
+            <ul id="actions-list">
+                 <li>(None yet)</li> </ul>
+        </div>
+        </div>
 
     <div id="main-content">
         <div id="chat-log">

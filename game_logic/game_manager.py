@@ -2,10 +2,15 @@
 # Contains the main GameManager class responsible for handling game state and logic.
 # Refactored: Removed ALL multi-statement lines using semicolons.
 # Updated: Added tutorial state flags (Phase 1, Step 1).
+# Updated: Added Actions Discovered state variables (Phase 4, Step 4.1).
+# Updated: Added calculation for total_actions (Phase 4, Step 4.2).
+# Fixed: Corrected alias handling in process_turn to pass full direction name to handle_go.
+# Updated: Modified process_turn return value to include discovery flag (Phase 5, Step 5.1).
+# Updated: Modified process_turn return value AGAIN to include discovered verb (Phase 5.1 Revised).
 
 import random
 import traceback # Import traceback for error logging
-from typing import Optional, Tuple, Dict, Any, Callable, Union, TYPE_CHECKING
+from typing import Optional, Tuple, Dict, Any, Callable, Union, TYPE_CHECKING, Set
 
 # Use relative imports
 from .models import Character, Location
@@ -87,24 +92,68 @@ class GameManager:
         print("Tutorial flags initialized.")
         # --- End Tutorial State Flags ---
 
+        # --- Actions Discovered State (Phase 4, Step 4.1) ---
+        self.discovered_actions: Set[str] = set() # Stores canonical verbs used successfully
+        self.total_actions: int = 0 # Will store total count of unique actions
+        print("Actions Discovered state initialized.")
+        # --- End Actions Discovered State ---
+
         # --- Action Registry ---
         self.action_registry: Dict[str, RegistryValue] = {}
-        LLM_ONLY = "LLM_ONLY"
+        LLM_ONLY = "LLM_ONLY" # Define marker here for use in total actions calculation
         if HANDLERS_LOADED:
+            # Define canonical verbs first for clarity
             self.action_registry = {
-                "go": handle_go, "north": handle_go, "n": handle_go, "south": handle_go, "s": handle_go, "east": handle_go, "e": handle_go, "west": handle_go, "w": handle_go, "up": handle_go, "u": handle_go, "down": handle_go, "d": handle_go,
-                "look": handle_look, "l": handle_look, "examine": handle_look,
-                "inv": handle_inventory, "inventory": handle_inventory, "i": handle_inventory,
-                "status": handle_status, "stats": handle_status, "score": handle_status,
-                "quests": handle_quests, "journal": handle_quests, "q": handle_quests,
-                "get": handle_get, "take": handle_get, "drop": handle_drop, "use": handle_use, "talk": handle_talk, "ask": handle_talk,
-                "attack": handle_attack, "hit": handle_attack, "fight": handle_attack,
+                # Movement
+                "go": handle_go,
+                # Observation
+                "look": handle_look,
+                "inventory": handle_inventory,
+                "status": handle_status,
+                "quests": handle_quests,
+                # Interaction
+                "get": handle_get,
+                "drop": handle_drop,
+                "use": handle_use,
+                "talk": handle_talk,
+                # Combat
+                "attack": handle_attack,
+                # Skills
                 "check": handle_skill_check,
-                "dance": LLM_ONLY, "sing": LLM_ONLY, "ponder": LLM_ONLY, "xyzzy": LLM_ONLY, "scream": LLM_ONLY, "laugh": LLM_ONLY, "cry": LLM_ONLY, "wave": LLM_ONLY, "sleep": LLM_ONLY,
+                # LLM Only (These won't be counted in total_actions)
+                "dance": LLM_ONLY, "sing": LLM_ONLY, "ponder": LLM_ONLY,
+                "xyzzy": LLM_ONLY, "scream": LLM_ONLY, "laugh": LLM_ONLY,
+                "cry": LLM_ONLY, "wave": LLM_ONLY, "sleep": LLM_ONLY,
             }
+            # Add aliases, mapping them to the same handler functions
+            aliases = {
+                "north": handle_go, "n": handle_go, "south": handle_go, "s": handle_go,
+                "east": handle_go, "e": handle_go, "west": handle_go, "w": handle_go,
+                "up": handle_go, "u": handle_go, "down": handle_go, "d": handle_go,
+                "l": handle_look, "examine": handle_look,
+                "inv": handle_inventory, "i": handle_inventory,
+                "stats": handle_status, "score": handle_status,
+                "journal": handle_quests, "q": handle_quests,
+                "take": handle_get,
+                "ask": handle_talk,
+                "hit": handle_attack, "fight": handle_attack,
+            }
+            self.action_registry.update(aliases)
             print(f"Action registry populated with {len(self.action_registry)} commands/aliases.")
         else:
             print("ERROR: Action registry could not be populated.")
+
+        # --- Calculate Total Discoverable Actions (Phase 4, Step 4.2) ---
+        unique_handlers = set()
+        for handler_or_marker in self.action_registry.values():
+            # Check if the value is a callable function (i.e., an action handler)
+            if callable(handler_or_marker):
+                unique_handlers.add(handler_or_marker)
+            # We ignore non-callable values like the LLM_ONLY string marker
+        self.total_actions = len(unique_handlers)
+        print(f"Calculated total discoverable actions: {self.total_actions}")
+        # --- End Total Actions Calculation ---
+
         print("GameManager initialized successfully.")
 
     # --- Command Parser (Simplified - Step R4.2) ---
@@ -151,21 +200,37 @@ class GameManager:
             self.character.remove_quest(completed_quest_id)
             xp_reward = quest_details.get('xp_reward', 0)
             leveled_up = self.character.add_xp(xp_reward)
-            msg = f"Quest Completed: {quest_details.get('name', '?')}! (+{xp_reward} XP)"
+            msg = f"Quest Completed: {quest_details.get('name', '?')}! (+ {xp_reward} XP)" # Added space before XP
             if leveled_up:
                 # Append level up message on a new line
                 msg += f"\n*** You reached Level {self.character.level}! ***"
             return msg
         return None
 
-    # --- Main Processing Method (Refactored - Step R4.3) ---
-    def process_turn(self, player_input: str) -> Tuple[str, Optional[Dict[str, Any]]]:
-        """Processes turn using action registry."""
+    # --- Main Processing Method ---
+    def process_turn(self, player_input: str) -> Tuple[str, Optional[Dict[str, Any]], bool, Optional[str]]:
+        """
+        Processes a player's turn using the action registry.
+
+        Args:
+            player_input: The raw input string from the player.
+
+        Returns:
+            A tuple containing:
+            - direct_message (str): Text to display directly to the player.
+            - llm_prompt_data (Optional[Dict[str, Any]]): Data for the LLM prompt, or None.
+            - action_was_newly_discovered (bool): True if a canonical action was successfully
+                                                  used for the first time this turn.
+            - discovered_verb (Optional[str]): The canonical verb discovered, if any.
+        """
         print(f"Processing turn for input: '{player_input}'")
         direct_message = ""
         llm_prompt_data = None
         quest_completion_message = None
         LLM_ONLY = "LLM_ONLY" # Marker defined in __init__
+        canonical_verb = None # To store the canonical verb for discovery tracking
+        action_was_newly_discovered = False # Flag for discovery
+        discovered_verb_this_turn = None # Store the verb discovered in this turn
 
         parsed_command = self.parse_command(player_input)
 
@@ -173,69 +238,99 @@ class GameManager:
             direct_message = "Please enter a command."
         else:
             verb, argument_string = parsed_command
-            DIRECTION_ALIASES = {"n":"north","north":"north","s":"south","south":"south","e":"east","east":"east","w":"west","west":"west","u":"up","up":"up","d":"down","down":"down"}
+            # --- Map aliases to canonical verbs ---
+            CANONICAL_VERBS = {
+                "go", "look", "inventory", "status", "quests",
+                "get", "drop", "use", "talk", "attack", "check"
+            }
+            ALIAS_MAP = {
+                "north": "go", "n": "go", "south": "go", "s": "go", "east": "go", "e": "go",
+                "west": "go", "w": "go", "up": "go", "u": "go", "down": "go", "d": "go",
+                "l": "look", "examine": "look",
+                "inv": "inventory", "i": "inventory",
+                "stats": "status", "score": "status",
+                "journal": "quests", "q": "quests",
+                "take": "get",
+                "ask": "talk",
+                "hit": "attack", "fight": "attack",
+            }
+            DIRECTION_NAMES = {
+                "north": "north", "n": "north", "south": "south", "s": "south",
+                "east": "east", "e": "east", "west": "west", "w": "west",
+                "up": "up", "u": "up", "down": "down", "d": "down"
+            }
 
-            # Handle direction aliases before registry lookup
-            if verb in DIRECTION_ALIASES:
-                 argument_string = DIRECTION_ALIASES[verb]
-                 verb = "go" # Use canonical verb
+            effective_verb = verb
+            handler_argument = argument_string
 
-            print(f"Processed command: Verb='{verb}', Argument='{argument_string}'")
-            handler_or_marker = self.action_registry.get(verb)
+            if verb in ALIAS_MAP:
+                canonical_verb = ALIAS_MAP[verb]
+                effective_verb = canonical_verb
+                if canonical_verb == 'go':
+                    full_direction = DIRECTION_NAMES.get(verb)
+                    if full_direction:
+                        handler_argument = full_direction
+                    else:
+                        handler_argument = verb
+            elif verb in CANONICAL_VERBS:
+                 canonical_verb = verb
+                 effective_verb = verb
+
+            print(f"Processed command: Verb='{verb}', Effective='{effective_verb}', Canonical='{canonical_verb}', HandlerArg='{handler_argument}'")
+
+            handler_or_marker = self.action_registry.get(effective_verb)
 
             if handler_or_marker is None:
-                # Command verb not found in the registry
                 direct_message = f"Sorry, I don't know how to '{verb}'."
                 llm_prompt_data = None
                 print(f"Command '{verb}' not found in registry.")
 
             elif handler_or_marker == LLM_ONLY:
-                # Command is marked for LLM-only handling
                 print(f"Dispatching '{verb}' to LLM-only handler.")
                 if HANDLERS_LOADED:
-                    # Pass original verb and argument string
                     direct_message, llm_prompt_data = handle_llm_only_action(self, verb, argument_string)
                 else:
-                    # Ensure llm_prompt_data is None if handler not loaded
                     direct_message = "[Game Error: LLM-only handler not loaded]"
                     llm_prompt_data = None
 
             elif callable(handler_or_marker):
-                # Command maps to a specific handler function
                 handler_func = handler_or_marker
-                print(f"Dispatching '{verb}' to handler: {handler_func.__name__}")
+                print(f"Dispatching '{effective_verb}' to handler: {handler_func.__name__}")
                 try:
-                    # Call the specific handler function from the actions package
-                    direct_message, llm_prompt_data = handler_func(self, argument_string)
+                    direct_message, llm_prompt_data = handler_func(self, handler_argument)
+
+                    # --- Action Discovery Check (Phase 4, Step 4.3) ---
+                    if canonical_verb and not direct_message.startswith("[Error"):
+                        if canonical_verb not in self.discovered_actions:
+                            self.discovered_actions.add(canonical_verb)
+                            action_was_newly_discovered = True # Set the flag here
+                            discovered_verb_this_turn = canonical_verb # Store the verb
+                            print(f"Action Discovered: '{canonical_verb}' added. Total: {len(self.discovered_actions)} / {self.total_actions}")
+                    # --- End Discovery Check ---
+
                 except Exception as e:
-                    # Catch errors within specific action handlers
-                    print(f"ERROR executing handler {handler_func.__name__} for '{verb}': {e}")
-                    traceback.print_exc() # Print full traceback for debugging
+                    print(f"ERROR executing handler {handler_func.__name__} for '{effective_verb}': {e}")
+                    traceback.print_exc()
                     direct_message = "[Game Error: An internal error occurred performing that action.]"
                     llm_prompt_data = None
             else:
-                # Invalid value in registry (should not happen if __init__ is correct)
-                print(f"ERROR: Invalid value found in action registry for verb '{verb}': {handler_or_marker}")
+                print(f"ERROR: Invalid value found in action registry for verb '{effective_verb}': {handler_or_marker}")
                 direct_message = "[Game Error: Internal configuration error for command.]"
                 llm_prompt_data = None
 
 
         # --- Check for quest completion AFTER action is processed ---
-        # Avoid checking if the command itself failed parsing or was unknown
         if parsed_command and parsed_command[0] not in ['error', 'unknown']:
-             # Also skip check for purely informational commands
-             # Updated list to match registry keys more closely
-             if verb not in ['status', 'stats', 'score', 'quests', 'journal', 'q', 'look', 'l', 'examine', 'inventory', 'inv', 'i']:
+             if effective_verb not in ['status', 'inventory', 'quests', 'look']:
                  quest_completion_message = self.check_quest_completion()
 
         # Append quest completion message if applicable
         if quest_completion_message:
-             # Ensure separation from previous message
              if direct_message and not direct_message.endswith('\n'):
-                 direct_message += "\n" # Add newline if needed
+                 direct_message += "\n"
              elif not direct_message:
-                 direct_message = "" # Ensure not None
+                 direct_message = ""
+             direct_message += f"\n{quest_completion_message}"
 
-             direct_message += f"\n{quest_completion_message}" # Append quest message
-
-        return direct_message, llm_prompt_data
+        # --- Return updated tuple including the discovery flag and discovered verb ---
+        return direct_message, llm_prompt_data, action_was_newly_discovered, discovered_verb_this_turn

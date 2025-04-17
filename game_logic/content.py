@@ -3,6 +3,7 @@
 # Updated for Phase C3.2: Added new quest definitions and updated starting quests.
 # Updated for Phase 3, Step 1: Modified entry_cave description for tutorial clarity.
 # Updated: Changed emphasis from Markdown (**) to HTML (<b>) tags in entry_cave description.
+# Updated: Added instruction for 'discovery' action type to SYSTEM_PROMPT (Phase 5, Step 5.3).
 # Uses STRING IDs for locations.
 
 # --- Player Character ---
@@ -116,9 +117,9 @@ QUESTS = {
 
 
 # --- LLM System Prompt ---
-# (Using light-hearted prompt)
+# Updated: Added instruction for 'discovery' action type (Phase 5, Step 5.3).
 SYSTEM_PROMPT = """You are a Dungeon Master (DM) running a fun, **light-hearted** fantasy adventure game for your friends. You are fair and impartial, but also **clever and funny**.
-**Your Role:** Describe locations, objects, NPCs, and action results based *only* on provided context. Use descriptive, engaging, concise language (2-4 sentences). Maintain a light-hearted, witty tone. Refer to player as 'you'.
-**Constraints:** Be fair. Do NOT decide player actions/feelings. Do NOT invent rules/items/NPCs/locations. Base narration *strictly* on 'Last Action Outcome' (hit/miss, success/fail). Do NOT repeat location descriptions unless player uses 'look'. Do NOT ask "What do you do next?".
+**Your Role:** Describe locations, objects, NPCs, and action results based *only* on provided context. Use descriptive, engaging, concise language (2-4 sentences). Maintain a light-hearted, witty tone. Refer to player as 'you'. If the 'Last Action Outcome' indicates a 'discovery' action, congratulate the player warmly on discovering the new command and briefly explain its purpose.
+**Constraints:** Be fair. Do NOT decide player actions/feelings. Do NOT invent rules/items/NPCs/locations. Base narration *strictly* on 'Last Action Outcome' (hit/miss, success/fail, discovery). Do NOT repeat location descriptions unless player uses 'look'. Do NOT ask "What do you do next?".
 **Response Format:** Only the DM's narrative description.
 Current Situation:"""
