@@ -8,6 +8,9 @@
 # Updated: Modified process_turn return value to include discovery flag (Phase 5, Step 5.1).
 # Updated: Modified process_turn return value AGAIN to include discovered verb (Phase 5.1 Revised).
 # Updated: Added discovered_llm_actions state variable (Phase 8, Step 8.1).
+# Updated: Added classic text adventure LLM_ONLY commands (User Request).
+# Updated: Added 80s pop culture LLM_ONLY commands (User Request).
+# Refactored: Moved LLM_ONLY command list to llm_commands.py and import it.
 
 import random
 import traceback # Import traceback for error logging
@@ -16,6 +19,7 @@ from typing import Optional, Tuple, Dict, Any, Callable, Union, TYPE_CHECKING, S
 # Use relative imports
 from .models import Character, Location
 from .content import PLAYER_START, LOCATIONS, QUESTS
+from .llm_commands import LLM_ONLY_COMMANDS # Import the list of LLM commands
 
 # --- Imports for Action Handlers ---
 HANDLERS_LOADED = False
@@ -108,7 +112,7 @@ class GameManager:
         self.action_registry: Dict[str, RegistryValue] = {}
         LLM_ONLY = "LLM_ONLY" # Define marker here for use in total actions calculation
         if HANDLERS_LOADED:
-            # Define canonical verbs first for clarity
+            # Define canonical verbs first
             self.action_registry = {
                 # Movement
                 "go": handle_go,
@@ -126,11 +130,14 @@ class GameManager:
                 "attack": handle_attack,
                 # Skills
                 "check": handle_skill_check,
-                # LLM Only (These won't be counted in total_actions)
-                "dance": LLM_ONLY, "sing": LLM_ONLY, "ponder": LLM_ONLY,
-                "xyzzy": LLM_ONLY, "scream": LLM_ONLY, "laugh": LLM_ONLY,
-                "cry": LLM_ONLY, "wave": LLM_ONLY, "sleep": LLM_ONLY,
             }
+
+            # Add LLM_ONLY commands from the imported list
+            # Ensure LLM_ONLY_COMMANDS is imported at the top
+            for command in LLM_ONLY_COMMANDS:
+                self.action_registry[command] = LLM_ONLY
+            print(f"Added {len(LLM_ONLY_COMMANDS)} LLM_ONLY commands.")
+
             # Add aliases, mapping them to the same handler functions
             aliases = {
                 "north": handle_go, "n": handle_go, "south": handle_go, "s": handle_go,
@@ -145,19 +152,19 @@ class GameManager:
                 "hit": handle_attack, "fight": handle_attack,
             }
             self.action_registry.update(aliases)
-            print(f"Action registry populated with {len(self.action_registry)} commands/aliases.")
+            print(f"Action registry populated with {len(self.action_registry)} total commands/aliases.")
         else:
             print("ERROR: Action registry could not be populated.")
 
         # --- Calculate Total Discoverable Actions (Phase 4, Step 4.2) ---
+        # Note: This calculation remains the same, it counts unique *handlers*,
+        # so LLM_ONLY commands (which map to a string marker) are not counted.
         unique_handlers = set()
         for handler_or_marker in self.action_registry.values():
-            # Check if the value is a callable function (i.e., an action handler)
             if callable(handler_or_marker):
                 unique_handlers.add(handler_or_marker)
-            # We ignore non-callable values like the LLM_ONLY string marker
         self.total_actions = len(unique_handlers)
-        print(f"Calculated total discoverable actions: {self.total_actions}")
+        print(f"Calculated total discoverable canonical actions: {self.total_actions}")
         # --- End Total Actions Calculation ---
 
         print("GameManager initialized successfully.")
@@ -167,11 +174,21 @@ class GameManager:
         """Parses input into verb and argument string."""
         if not user_input:
             return None
-        parts = user_input.lower().strip().split()
+        # Handle multi-word commands intended as single verbs (like 'hello sailor')
+        parts = user_input.lower().strip().split(None, 1) # Split only once
         if not parts:
             return None
         verb = parts[0]
-        argument_string = " ".join(parts[1:]) if len(parts) > 1 else None
+        argument_string = parts[1] if len(parts) > 1 else None
+        # Special check for known multi-word LLM commands mapped to first word
+        if verb == "hello" and argument_string == "sailor":
+             pass # Keep verb as 'hello', argument as 'sailor' for context
+        elif verb == "open" and argument_string == "sesame":
+             verb = "sesame" # Treat 'open sesame' as 'sesame'
+             argument_string = None
+        elif verb == "flux" and argument_string == "capacitor":
+             pass # Keep verb 'flux', argument 'capacitor' for context
+
         return (verb, argument_string)
 
     # --- Quest Completion Check ---
@@ -245,7 +262,8 @@ class GameManager:
             direct_message = "Please enter a command."
         else:
             verb, argument_string = parsed_command
-            llm_action_verb = verb # Store original verb in case it's LLM_ONLY
+            # Store the original verb before potential mapping, used for LLM_ONLY discovery
+            llm_action_verb = verb
 
             # --- Map aliases to canonical verbs ---
             CANONICAL_VERBS = {
@@ -284,10 +302,14 @@ class GameManager:
             elif verb in CANONICAL_VERBS:
                  canonical_verb = verb
                  effective_verb = verb
+            # If not in alias map or canonical verbs, it might be an LLM_ONLY command
+            # We use the original 'verb' (llm_action_verb) for LLM_ONLY lookup below
 
             print(f"Processed command: Verb='{verb}', Effective='{effective_verb}', Canonical='{canonical_verb}', HandlerArg='{handler_argument}'")
 
-            handler_or_marker = self.action_registry.get(effective_verb)
+            # Use the original verb for the initial lookup if it wasn't mapped to a canonical one
+            lookup_verb = verb if canonical_verb is None else effective_verb
+            handler_or_marker = self.action_registry.get(lookup_verb)
 
             if handler_or_marker is None:
                 direct_message = f"Sorry, I don't know how to '{verb}'."
@@ -295,12 +317,12 @@ class GameManager:
                 print(f"Command '{verb}' not found in registry.")
 
             elif handler_or_marker == LLM_ONLY:
-                print(f"Dispatching '{verb}' to LLM-only handler.")
+                # Use the original verb (stored in llm_action_verb) for the handler call
+                print(f"Dispatching '{llm_action_verb}' to LLM-only handler.")
                 if HANDLERS_LOADED:
-                    direct_message, llm_prompt_data = handle_llm_only_action(self, verb, argument_string)
+                    # Pass original verb and argument string to LLM handler for context
+                    direct_message, llm_prompt_data = handle_llm_only_action(self, llm_action_verb, argument_string)
                     # --- LLM Action Discovery Check (Phase 8, Step 8.2) ---
-                    # Check if the LLM action verb is new
-                    # Ensure llm_action_verb is not None and the action didn't immediately error
                     if llm_action_verb and not direct_message.startswith("[Error"):
                          if llm_action_verb not in self.discovered_llm_actions:
                               self.discovered_llm_actions.add(llm_action_verb)
@@ -331,14 +353,18 @@ class GameManager:
                     direct_message = "[Game Error: An internal error occurred performing that action.]"
                     llm_prompt_data = None
             else:
-                print(f"ERROR: Invalid value found in action registry for verb '{effective_verb}': {handler_or_marker}")
+                # This case should ideally not happen if registry is correct
+                print(f"ERROR: Invalid value found in action registry for verb '{lookup_verb}': {handler_or_marker}")
                 direct_message = "[Game Error: Internal configuration error for command.]"
                 llm_prompt_data = None
 
 
         # --- Check for quest completion AFTER action is processed ---
         if parsed_command and parsed_command[0] not in ['error', 'unknown']:
-             if effective_verb not in ['status', 'inventory', 'quests', 'look']:
+             # Use effective_verb (canonical or original LLM verb) for this check
+             # Exclude purely informational commands
+             check_verb = effective_verb if canonical_verb is None else canonical_verb
+             if check_verb not in ['status', 'inventory', 'quests', 'look']:
                  quest_completion_message = self.check_quest_completion()
 
         # Append quest completion message if applicable
