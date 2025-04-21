@@ -1,5 +1,6 @@
 # database/db_setup.py
 # Refactored: Removed multi-statement lines using semicolons.
+# Updated: Added columns for discovered actions and tutorial flags (Persistence Plan P1.1).
 
 import sqlite3
 import os
@@ -34,18 +35,25 @@ def create_tables(conn):
         cursor = conn.cursor()
         print("Creating/Updating 'characters' table (if it doesn't exist)...")
         # Using TEXT for location ID, INTEGER for level/xp, TEXT for JSON lists/dicts
+        # Added columns for discovered actions (TEXT JSON) and tutorial flags (INTEGER 0/1)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS characters (
                 id INTEGER PRIMARY KEY,
                 name TEXT NOT NULL,
                 hp INTEGER NOT NULL,
                 max_hp INTEGER NOT NULL,
-                current_location_id TEXT NOT NULL, -- Reverted to TEXT
+                current_location_id TEXT NOT NULL,
                 inventory TEXT NOT NULL DEFAULT '[]',
                 skills TEXT NOT NULL DEFAULT '{}',
                 xp INTEGER NOT NULL DEFAULT 0,
                 level INTEGER NOT NULL DEFAULT 1,
-                active_quests TEXT NOT NULL DEFAULT '[]'
+                active_quests TEXT NOT NULL DEFAULT '[]',
+                -- Added Persistence Columns (Plan P1.1) --
+                discovered_actions TEXT NOT NULL DEFAULT '[]',
+                discovered_llm_actions TEXT NOT NULL DEFAULT '[]',
+                tutorial_pickaxe_taken INTEGER NOT NULL DEFAULT 0,
+                tutorial_blockage_cleared INTEGER NOT NULL DEFAULT 0
+                -- End Added Columns --
             )
         """)
         conn.commit()

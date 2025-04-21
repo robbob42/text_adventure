@@ -16,6 +16,7 @@
 # Refactored: Calculate total_actions after registry build (Phase 13.3).
 # Refactored: Moved parse_command method to parser.py (Phase 13.4).
 # Refactored: Moved check_quest_completion method to quest_logic.py (Phase 13.5).
+# Updated: Modified __init__ to accept loaded character and persistence state (P3.3).
 
 import random
 import traceback # Import traceback for error logging
@@ -23,7 +24,7 @@ from typing import Optional, Tuple, Dict, Any, Callable, Union, TYPE_CHECKING, S
 
 # Use relative imports
 from .models import Character, Location
-from .content import PLAYER_START, LOCATIONS # QUESTS is no longer needed here
+from .content import PLAYER_START, LOCATIONS # PLAYER_START might still be needed for fallback
 from .parser import parse_command # Import the parser function (Phase 13.4)
 from .quest_logic import check_quest_completion # Import quest checker (Phase 13.5)
 
@@ -51,11 +52,19 @@ class GameManager:
     ALIAS_MAP: Dict[str, str] = {}
     DIRECTION_NAMES: Dict[str, str] = {}
 
-    def __init__(self):
-        """Initializes game state using string location IDs."""
+    # --- Updated __init__ Signature (P3.3) ---
+    def __init__(self,
+                 initial_character: Optional[Character] = None,
+                 initial_discovered_actions: Optional[Set[str]] = None,
+                 initial_discovered_llm_actions: Optional[Set[str]] = None,
+                 initial_tutorial_pickaxe_taken: Optional[bool] = None,
+                 initial_tutorial_blockage_cleared: Optional[bool] = None):
+        """
+        Initializes game state, accepting loaded character and persistence data.
+        """
         print("Initializing GameManager...")
 
-        # --- Load Locations ---
+        # --- Load Locations (Remains the same) ---
         self.locations: dict[str, Location] = {}
         for loc_id, loc_data in LOCATIONS.items():
             if loc_id != loc_data.get('id'):
@@ -67,36 +76,50 @@ class GameManager:
                 print(f"Error creating Loc '{loc_id}': {e}\nData: {loc_data}")
         print(f"Loaded {len(self.locations)} locations.")
 
-        # --- Load Character ---
-        try:
-            self.character = Character(**PLAYER_START)
-            print(f"Character created: {self.character}")
-        except TypeError as e:
-            print(f"Error creating Character: {e}\nData: {PLAYER_START}")
-            raise ValueError("Failed init char.") from e
+        # --- Load Character (Updated P3.3) ---
+        if initial_character is not None:
+            self.character = initial_character
+            print(f"Character loaded from initial_character: {self.character}")
+        else:
+            # Fallback or error? Raise error as initialize_game should provide it.
+            print("ERROR: GameManager initialized without initial_character!")
+            # Optionally load from PLAYER_START as a last resort, but indicates an issue.
+            # self.character = Character(**PLAYER_START)
+            # print(f"WARNING: Falling back to PLAYER_START for character.")
+            raise ValueError("GameManager requires an initial_character to be provided.")
 
-        # --- Set Initial Location ---
+        # --- Set Initial Location (Updated P3.3) ---
         self.current_location: Location | None = self.locations.get(self.character.current_location_id)
         if self.current_location is None:
-            raise ValueError(f"Invalid start loc ID: '{self.character.current_location_id}'")
+            print(f"ERROR: Loaded character's location ID '{self.character.current_location_id}' not found in locations.")
+            # Fallback to PLAYER_START location ID if possible
+            fallback_loc_id = PLAYER_START.get('current_location_id', 'entry_cave')
+            self.current_location = self.locations.get(fallback_loc_id)
+            if self.current_location:
+                 print(f"WARNING: Falling back to location ID '{fallback_loc_id}'.")
+                 self.character.current_location_id = fallback_loc_id # Correct character state
+            else:
+                 # This is a critical error - cannot find even the default start location
+                 raise ValueError(f"Invalid start location ID '{self.character.current_location_id}' and fallback '{fallback_loc_id}' also not found.")
         else:
             print(f"Game started at: {self.current_location.name} (ID: '{self.current_location.id}')")
 
-        # --- Tutorial State Flags ---
-        self.tutorial_pickaxe_taken: bool = False
-        self.tutorial_blockage_cleared: bool = False
-        print("Tutorial flags initialized.")
 
-        # --- Actions Discovered State ---
-        self.discovered_actions: Set[str] = set()
+        # --- Tutorial State Flags (Updated P3.3) ---
+        self.tutorial_pickaxe_taken: bool = initial_tutorial_pickaxe_taken if initial_tutorial_pickaxe_taken is not None else False
+        self.tutorial_blockage_cleared: bool = initial_tutorial_blockage_cleared if initial_tutorial_blockage_cleared is not None else False
+        print(f"Tutorial flags initialized (loaded): Pickaxe={self.tutorial_pickaxe_taken}, Blockage={self.tutorial_blockage_cleared}")
+
+        # --- Actions Discovered State (Updated P3.3) ---
+        self.discovered_actions: Set[str] = initial_discovered_actions if initial_discovered_actions is not None else set()
         self.total_actions: int = 0 # Initialize before calculation
-        print("Actions Discovered state initialized.")
+        print(f"Actions Discovered state initialized (loaded): Count={len(self.discovered_actions)}")
 
-        # --- LLM Actions Discovered State ---
-        self.discovered_llm_actions: Set[str] = set()
-        print("LLM Actions Discovered state initialized.")
+        # --- LLM Actions Discovered State (Updated P3.3) ---
+        self.discovered_llm_actions: Set[str] = initial_discovered_llm_actions if initial_discovered_llm_actions is not None else set()
+        print(f"LLM Actions Discovered state initialized (loaded): Count={len(self.discovered_llm_actions)}")
 
-        # --- Build Action Registry (Phase 13.2) ---
+        # --- Build Action Registry (Remains the same) ---
         try:
             # Import and call the external builder function
             from .action_registry_setup import build_action_registry
@@ -112,7 +135,7 @@ class GameManager:
             GameManager.DIRECTION_NAMES = {}
         # --- End Registry Build ---
 
-        # --- Calculate Total Discoverable Actions (Phase 13.3) ---
+        # --- Calculate Total Discoverable Actions (Remains the same) ---
         unique_handlers = set()
         for handler_or_marker in self.action_registry.values():
             if callable(handler_or_marker):
@@ -128,7 +151,7 @@ class GameManager:
     # --- Quest Completion Check Method Removed (Phase 13.5) ---
     # Logic moved to game_logic/quest_logic.py
 
-    # --- Main Processing Method ---
+    # --- Main Processing Method (Remains the same) ---
     def process_turn(self, player_input: str) -> Tuple[str, Optional[Dict[str, Any]], bool, Optional[str]]:
         """Processes a player's turn using the action registry."""
         print(f"Processing turn for input: '{player_input}'")

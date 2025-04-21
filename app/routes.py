@@ -4,9 +4,11 @@
 # Fixed: Changed relative imports within 'app' package to absolute imports.
 # Refactored: Using Blueprint instead of importing app directly.
 # Refactored: Importing game_manager from app package (__init__).
+# Updated: Retrieve persistence state before saving (P4.1).
+# Updated: Pass persistence state to save_character_state call (P4.2).
 
 import traceback
-from flask import render_template, request, jsonify, Blueprint # Import Blueprint
+from flask import render_template, request, jsonify, Blueprint # type: ignore # Import Blueprint
 from typing import Optional, Dict, Any
 
 print("--- Executing app/routes.py ---")
@@ -147,16 +149,44 @@ def chat():
     final_reply = final_reply_content.strip()
     print(f"Final reply being sent (length: {len(final_reply)}): '{final_reply[:200]}...'")
 
-    # --- Save state ---
+    # --- Save state (Updated P4.1, P4.2) ---
     if game_manager.character:
-        print("Saving character state..."); db_conn_save = get_db_connection(); save_success = False
+        print("Preparing to save state...")
+        # --- Retrieve current state from GameManager (P4.1) ---
+        current_discovered_actions = game_manager.discovered_actions
+        current_llm_actions = game_manager.discovered_llm_actions
+        current_pickaxe_flag = game_manager.tutorial_pickaxe_taken
+        current_blockage_flag = game_manager.tutorial_blockage_cleared
+        print(f"  Retrieved state: Discovered={len(current_discovered_actions)}, LLM={len(current_llm_actions)}, Flags=P{current_pickaxe_flag}/B{current_blockage_flag}")
+        # --- End Retrieve State ---
+
+        db_conn_save = get_db_connection()
+        save_success = False
         if db_conn_save:
             try:
-                save_success = save_character_state(db_conn_save, game_manager.character, character_id=1)
-            except Exception as e: print(f"Error during save: {e}")
-            finally: db_conn_save.close(); print(f"Save connection closed. Success: {save_success}")
-        else: print("Failed to get DB connection for saving.")
-    else: print("Skipping save state.")
+                # --- Update save_character_state call (P4.2) ---
+                # Pass the retrieved state variables along with the character object
+                save_success = save_character_state(
+                    db_conn_save,
+                    game_manager.character,
+                    current_discovered_actions,
+                    current_llm_actions,
+                    current_pickaxe_flag,
+                    current_blockage_flag,
+                    character_id=1
+                )
+                # --- End Update ---
+            except Exception as e:
+                print(f"Error during save: {e}")
+                traceback.print_exc() # Print full traceback for save errors
+            finally:
+                db_conn_save.close()
+                print(f"Save connection closed. Success: {save_success}")
+        else:
+            print("Failed to get DB connection for saving.")
+    else:
+        print("Skipping save state (no character object).")
+    # --- End Save State ---
 
     # --- Return JSON response ---
     active_quest_names_resp = [QUESTS.get(qid, {}).get('name', 'Unknown Quest') for qid in game_manager.character.active_quests] if game_manager.character else []
